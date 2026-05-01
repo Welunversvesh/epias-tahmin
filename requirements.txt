@@ -1,0 +1,9 @@
+pandas
+xgboost
+streamlit
+scikit-learn
+eptr2
+plotly
+openpyxl
+numpy
+pytz
