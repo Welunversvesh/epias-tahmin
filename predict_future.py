@@ -45,11 +45,26 @@ def load_recent_raw_data(days=15):
     df_rtg = load_combined('rtg', cols=['total'], rename_dict={'total': 'actual_total_gen'})
     df_pio = load_combined('pi_offer', cols=['offerVolume'], rename_dict={'offerVolume': 'price_independent_sales'})
     
+    # Dogalgaz fiyati
+    try:
+        df_gas_25 = pd.read_csv('gas_prices_2025.csv')
+        df_gas_26 = pd.read_csv('gas_prices_2026.csv')
+        df_gas = pd.concat([df_gas_25, df_gas_26], ignore_index=True)
+        df_gas['date'] = pd.to_datetime(df_gas['date'], utc=True)
+        df_gas.set_index('date', inplace=True)
+        df_gas = df_gas[~df_gas.index.duplicated(keep='first')]
+        df_gas = df_gas.resample('h').ffill()
+    except:
+        df_gas = pd.DataFrame()
+    
     df = df_ptf.join(df_load, how='outer') \
                .join(df_kgup, how='outer') \
                .join(df_smp, how='outer') \
                .join(df_rtg, how='outer') \
                .join(df_pio, how='outer')
+    
+    if not df_gas.empty:
+        df = df.join(df_gas, how='left')
                
     df.ffill(inplace=True)
     df.bfill(inplace=True)
@@ -175,6 +190,11 @@ def predict_future_day(target_date_str):
     
     df['demand_supply_ratio'] = df['lep'] / (df['planned_total_gen'] + 1)
     df['pi_offer_ratio'] = df['price_independent_sales'] / (df['planned_total_gen'] + 1)
+    
+    # Dogalgaz ozellikleri
+    if 'gas_price' in df.columns:
+        df['gas_price_lag_24'] = df['gas_price'].shift(24)
+        df['elec_gas_ratio'] = df['price'].shift(24) / (df['gas_price'].shift(24) + 1)
     
     # Sızdırma sütunlarını sil (Gerçek hayatta sadece model özellikleri kalmalı)
     df.drop(['systemMarginalPrice', 'actual_total_gen', 'gen_deviation'], axis=1, inplace=True)
