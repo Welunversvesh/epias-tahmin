@@ -228,7 +228,7 @@ def main():
     <div class="hero-container">
         <p class="hero-title">⚡ EPİAŞ Yapay Zeka PTF Tahmin Sistemi</p>
         <p class="hero-subtitle">XGBoost ML modeli ile 16 aylık piyasa verisi üzerinden eğitilmiş gerçek zamanlı fiyat tahminleme platformu</p>
-        <span class="hero-badge">AKSET ENERJİ</span>
+        <span class="hero-badge">XGBoost + SNAPPING ENGINE</span>
     </div>
     """, unsafe_allow_html=True)
 
@@ -281,7 +281,12 @@ def main():
             actual_mean = filtered_df['price'].mean()
             predicted_mean = filtered_df['predicted_price'].mean()
             mae = abs(filtered_df['price'] - filtered_df['predicted_price']).mean()
-            accuracy = max(0, 100 - (mae / actual_mean * 100)) if actual_mean > 0 else 0
+            valid = filtered_df[filtered_df['price'] > 10]
+            if len(valid) > 0:
+                mape = (abs(valid['price'] - valid['predicted_price']) / valid['price']).mean() * 100
+                accuracy = max(0, 100 - mape)
+            else:
+                accuracy = 0
 
             # Metrik Kartları
             c1, c2, c3, c4 = st.columns(4)
@@ -524,7 +529,7 @@ def main():
     # Footer
     st.markdown("""
     <div class="footer-text">
-        Powered by XGBoost ML · EPİAŞ EPTR2 API · Akset Enerji © 2026
+        Powered by XGBoost ML · EPİAŞ EPTR2 API · 2026
     </div>
     """, unsafe_allow_html=True)
 
