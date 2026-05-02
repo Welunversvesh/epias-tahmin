@@ -27,14 +27,33 @@ def load_and_merge_data():
     df_rtg = load_combined('rtg', cols=['total'], rename_dict={'total': 'actual_total_gen'})
     df_pio = load_combined('pi_offer', cols=['offerVolume'], rename_dict={'offerVolume': 'price_independent_sales'})
     
-    print("[*] Tüm Tablolar birleştiriliyor...")
+    # Dogalgaz GRF Fiyati (Gunluk -> Saatlige cevirilir)
+    print("[*] Dogalgaz referans fiyatlari yukleniyor...")
+    try:
+        df_gas_25 = pd.read_csv('gas_prices_2025.csv')
+        df_gas_26 = pd.read_csv('gas_prices_2026.csv')
+        df_gas = pd.concat([df_gas_25, df_gas_26], ignore_index=True)
+        df_gas['date'] = pd.to_datetime(df_gas['date'], utc=True)
+        df_gas.set_index('date', inplace=True)
+        df_gas = df_gas[~df_gas.index.duplicated(keep='first')]
+        # Gunluk veriyi saatlige yay (her saate ayni gun fiyati)
+        df_gas = df_gas.resample('h').ffill()
+        print(f"    [+] {len(df_gas)} satir dogalgaz verisi yuklendi.")
+    except Exception as e:
+        print(f"    [-] Dogalgaz verisi yuklenemedi: {e}")
+        df_gas = pd.DataFrame()
+    
+    print("[*] Tum Tablolar birlestiriliyor...")
     df = df_ptf[['price']].join(df_load, how='inner') \
                           .join(df_kgup, how='inner') \
                           .join(df_smp, how='left') \
                           .join(df_rtg, how='left') \
                           .join(df_pio, how='left')
+    
+    if not df_gas.empty:
+        df = df.join(df_gas, how='left')
                           
-    # NaN olanları ileriye/geriye dönük doldurma (bazı aylar eksik inmiş olabilir)
+    # NaN olanlari ileriye/geriye donuk doldurma
     df.ffill(inplace=True)
     df.bfill(inplace=True)
     
@@ -99,8 +118,15 @@ def create_features(df):
     # lep (talep) / toplam (üretim planı)
     df['demand_supply_ratio'] = df['lep'] / (df['planned_total_gen'] + 1)
     
-    # Fiyattan bağımsız satış oranı (Toplam plana kıyasla ne kadar satış fiyata duyarsız?)
+    # Fiyattan bağımsız satış oranı
     df['pi_offer_ratio'] = df['price_independent_sales'] / (df['planned_total_gen'] + 1)
+    
+    # 5. Dogalgaz Ozellikleri
+    if 'gas_price' in df.columns:
+        print("[*] Dogalgaz ozellikleri uretiliyor...")
+        df['gas_price_lag_24'] = df['gas_price'].shift(24)
+        # Elektrik/Gaz orani (Spark Spread benzeri)
+        df['elec_gas_ratio'] = df['price'].shift(24) / (df['gas_price'].shift(24) + 1)
     
     # Geleceği sızdırmaması gereken (Leakage) sütunları silelim
     # Actual Generation (RTG) ve SMP o saat geldiğinde belli olur, bu yüzden güncel halleri modelde OLAMAZ!
