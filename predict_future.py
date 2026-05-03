@@ -232,6 +232,8 @@ def predict_future_day(target_date_str):
     df['smp_lag_24'] = df['systemMarginalPrice'].shift(24)
     df['sfk_lag_24'] = df['sfk_price'].shift(24)
     df['pfk_lag_24'] = df['pfk_price'].shift(24)
+    df['sfk_amount_lag_24'] = df['sfk_amount'].shift(24)
+    df['pfk_amount_lag_24'] = df['pfk_amount'].shift(24)
     
     df['gen_deviation'] = df['actual_total_gen'] - df['planned_total_gen']
     df['gen_deviation_lag_24'] = df['gen_deviation'].shift(24)
