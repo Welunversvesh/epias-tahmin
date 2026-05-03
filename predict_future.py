@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import xgboost as xgb
 import pickle
+import os
 from eptr2 import EPTR2
 from datetime import datetime, timedelta
 import pytz
@@ -189,10 +190,19 @@ def load_recent_raw_data(days=15):
 
 def fetch_future_plan(target_date_str):
     import streamlit as st
+    username = None
+    password = None
     try:
         username = st.secrets["epias"]["username"]
         password = st.secrets["epias"]["password"]
     except Exception:
+        username = None
+        password = None
+
+    username = username or os.getenv("EPIAS_USERNAME")
+    password = password or os.getenv("EPIAS_PASSWORD")
+
+    if not username or not password:
         with open(BASE_DIR / "credentials.txt", "r") as f:
             lines = [line.strip() for line in f.readlines() if line.strip()]
             username = lines[0]
