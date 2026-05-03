@@ -6,6 +6,14 @@ import pickle
 import json
 from datetime import datetime, timezone
 
+def safe_mape(y_true, y_pred, min_actual=1.0):
+    y_true = np.asarray(y_true)
+    y_pred = np.asarray(y_pred)
+    mask = np.abs(y_true) >= min_actual
+    if not mask.any():
+        return None
+    return float(np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100)
+
 def train_and_evaluate():
     print("=== XGBoost PTF Tahmin Modeli Eğitimi ===")
     
@@ -65,12 +73,16 @@ def train_and_evaluate():
     
     mae = mean_absolute_error(y_test, y_pred)
     rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-    mape = mean_absolute_percentage_error(y_test, y_pred) * 100
+    raw_mape = mean_absolute_percentage_error(y_test, y_pred) * 100
+    mape = safe_mape(y_test, y_pred)
     
     print("================ SONUÇLAR ================")
     print(f"Ortalama Mutlak Hata (MAE): {mae:.2f} TL/MWh")
     print(f"Kök Ortalama Kare Hata (RMSE): {rmse:.2f} TL/MWh")
-    print(f"Ortalama Yüzdesel Hata (MAPE): %{mape:.2f}")
+    if mape is not None:
+        print(f"Ortalama Yüzdesel Hata (MAPE, PTF >= 1): %{mape:.2f}")
+    else:
+        print("Ortalama Yüzdesel Hata (MAPE): Hesaplanamadı")
     print("==========================================")
     
     # 6. Modeli Kaydetme
@@ -92,7 +104,9 @@ def train_and_evaluate():
         "feature_count": len(features),
         "mae": float(mae),
         "rmse": float(rmse),
-        "mape": float(mape),
+        "mape": float(mape) if mape is not None else None,
+        "raw_mape": float(raw_mape),
+        "mape_note": "MAPE, gerçek PTF değeri 1 TL/MWh ve üzerindeki saatler için hesaplandı.",
     }
     with open("model_metrics.json", "w", encoding="utf-8") as f:
         json.dump(metrics, f, ensure_ascii=False, indent=2)
