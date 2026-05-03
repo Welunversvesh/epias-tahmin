@@ -459,19 +459,52 @@ def main():
     # SEKME 3: AYLIK TREND TAHMİNİ
     # ═══════════════════════════════════════════
     with tab3:
-        st.markdown("""<div class="section-header"><span class="icon">📅</span><span class="text">Aylık Ortalama PTF Tahmini</span><span class="line"></span></div>""", unsafe_allow_html=True)
-        st.caption("Geçmiş 16 aylık verinin trendini ve mevsimselliği baz alarak gelecek ayların ortalama PTF beklentisini hesaplar.")
-        
+        st.markdown("""<div class="section-header"><span class="icon">📊</span><span class="text">Geçmiş Aylık Performans (Gerçekleşen vs Tahmin)</span><span class="line"></span></div>""", unsafe_allow_html=True)
+        st.caption("Modelin Ocak 2025'ten bugüne kadarki aylık ortalama tahmin başarısını gösterir.")
+
+        # Aylık verileri hazırla
         try:
+            # Geçmiş ham verileri projeksiyon için de yükleyelim
             df_ptf_25 = pd.read_csv("ptf_2025_saatlik_ham.csv", parse_dates=['date'])
             df_ptf_26 = pd.read_csv("ptf_2026_saatlik_ham.csv", parse_dates=['date'])
-            df_ptf = pd.concat([df_ptf_25, df_ptf_26])
-            df_ptf.set_index('date', inplace=True)
-            df_ptf.index = pd.to_datetime(df_ptf.index, utc=True)
-            monthly_actual = df_ptf['price'].resample('ME').mean()
-        except:
-            monthly_actual = df['price'].resample('ME').mean()
-            df_ptf = df
+            df_ptf_all = pd.concat([df_ptf_25, df_ptf_26], ignore_index=True)
+            df_ptf_all['date'] = pd.to_datetime(df_ptf_all['date'], utc=True)
+            df_ptf_all.set_index('date', inplace=True)
+            
+            # Model performansını model_ready_data'dan (df) alalım
+            m_df = df[['price', 'predicted_price']].resample('ME').mean()
+            m_df['Ay'] = m_df.index.strftime('%Y-%m')
+            m_df['Sapma (%)'] = ((m_df['predicted_price'] - m_df['price']) / m_df['price']) * 100
+            
+            # Projeksiyon için gerekli değişkeni tanımlayalım
+            monthly_actual = df_ptf_all['price'].resample('ME').mean()
+            df_ptf = df_ptf_all # Projeksiyon butonu için
+            
+            # Tabloyu göster
+            st.subheader("📋 Aylık Ortalama Kıyaslama Tablosu")
+            disp_m_df = m_df[['Ay', 'price', 'predicted_price', 'Sapma (%)']].copy()
+            disp_m_df.columns = ['Ay', 'Gerçekleşen Ort.', 'Model Tahmin Ort.', 'Hata (%)']
+            st.dataframe(disp_m_df.style.format({
+                'Gerçekleşen Ort.': "{:,.2f} ₺",
+                'Model Tahmin Ort.': "{:,.2f} ₺",
+                'Hata (%)': "%{:,.1f}"
+            }), use_container_width=True)
+
+            # Grafik
+            st.markdown("<br>", unsafe_allow_html=True)
+            fig_m = go.Figure()
+            fig_m.add_trace(go.Bar(x=m_df['Ay'], y=m_df['price'], name='Gerçekleşen Ort.', marker_color='#4ECDC4'))
+            fig_m.add_trace(go.Bar(x=m_df['Ay'], y=m_df['predicted_price'], name='Model Tahmin Ort.', marker_color='#FF6B6B'))
+            
+            fig_m.update_layout(**make_chart_layout(title="Aylık Ortalama PTF Karşılaştırması"))
+            fig_m.update_layout(barmode='group')
+            st.plotly_chart(fig_m, use_container_width=True)
+            
+        except Exception as e:
+            st.error(f"Aylık veriler hesaplanırken hata oluştu: {e}")
+
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.markdown("""<div class="section-header"><span class="icon">📅</span><span class="text">Gelecek Aylık Trend Tahmini (Projeksiyon)</span><span class="line"></span></div>""", unsafe_allow_html=True)
         
         col_month1, col_month2 = st.columns([1, 3])
         with col_month1:
