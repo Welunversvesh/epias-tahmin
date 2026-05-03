@@ -423,11 +423,24 @@ def main():
                         fig2.update_layout(**make_chart_layout())
                         st.plotly_chart(fig2, use_container_width=True)
                         
-                        # Tablo
                         st.markdown("""<div class="section-header"><span class="icon">📋</span><span class="text">Saatlik Detay</span><span class="line"></span></div>""", unsafe_allow_html=True)
                         res_display = res.copy()
                         res_display.index = res_display.index.strftime('%H:%00')
-                        res_display.columns = ['Tahmini PTF', 'Yük Planı', 'Üretim Planı', 'Rüzgar', 'Güneş', 'Bağımsız Satış']
+                        
+                        # Sütunları Türkçeleştir ve sırala
+                        col_map = {
+                            'predicted_price': 'Tahmini PTF',
+                            'lep': 'Yük Planı',
+                            'planned_total_gen': 'Toplam Üretim',
+                            'planned_gas_gen': 'Doğalgaz Üretim',
+                            'ruzgar': 'Rüzgar Plan',
+                            'gunes': 'Güneş Plan',
+                            'temperature': 'Sıcaklık (C)',
+                            'wind_speed': 'Rüzgar Hızı (km/h)',
+                            'price_independent_sales': 'Bağımsız Satış'
+                        }
+                        
+                        res_display = res_display[list(col_map.keys())].rename(columns=col_map)
                         st.dataframe(res_display.style.format("{:,.2f}"), use_container_width=True)
                         
                         buf = io.BytesIO()
