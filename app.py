@@ -533,76 +533,91 @@ def main():
             st.error(f"Aylık veriler hesaplanırken hata oluştu: {e}")
 
         st.markdown("<br><br>", unsafe_allow_html=True)
-        st.markdown("""<div class="section-header"><span class="icon">📅</span><span class="text">Gelecek Aylık Trend Tahmini (Projeksiyon)</span><span class="line"></span></div>""", unsafe_allow_html=True)
+        st.markdown("""<div class="section-header"><span class="icon">🔮</span><span class="text">Gelecek 6 Ay Projeksiyonu & Senaryo Analizi</span><span class="line"></span></div>""", unsafe_allow_html=True)
         
-        col_month1, col_month2 = st.columns([1, 3])
-        with col_month1:
-            target_month = st.selectbox("Hedef Ay", ["Mayıs 2026", "Haziran 2026", "Temmuz 2026", "Ağustos 2026", "Eylül 2026", "Ekim 2026", "Kasım 2026", "Aralık 2026"])
-            month_map = {"Mayıs": 5, "Haziran": 6, "Temmuz": 7, "Ağustos": 8, "Eylül": 9, "Ekim": 10, "Kasım": 11, "Aralık": 12}
-            selected_month_num = month_map[target_month.split(" ")[0]]
-            selected_year_num = int(target_month.split(" ")[1])
+        # SENARYO SEÇİMLERİ
+        with st.expander("🛠️ Senaryo Ayarları (Tahmini Özelleştir)", expanded=True):
+            col_s1, col_s2 = st.columns(2)
+            with col_s1:
+                hydro_scenario = st.select_slider(
+                    "💧 Hidrolojik Durum (Barajlar)",
+                    options=["Yağışlı", "Normal", "Kurak"],
+                    value="Normal",
+                    help="Yağışlı havalarda HES üretimi artar ve fiyatlar düşer."
+                )
+            with col_s2:
+                temp_scenario = st.select_slider(
+                    "🌡️ Yaz Mevsimi Sıcaklığı",
+                    options=["Normal", "Sıcak", "Aşırı Sıcak"],
+                    value="Normal",
+                    help="Aşırı sıcaklarda klima kullanımı artar ve fiyatlar yükselir."
+                )
         
-        if st.button("📈 Trendi Hesapla", use_container_width=True):
-            last_year_data = df_ptf[(df_ptf.index.year == selected_year_num-1) & (df_ptf.index.month == selected_month_num)]
+        # Senaryo Katsayıları
+        hydro_coeff = {"Yağışlı": 0.85, "Normal": 1.0, "Kurak": 1.15}[hydro_scenario]
+        temp_coeff = {"Normal": 1.0, "Sıcak": 1.05, "Aşırı Sıcak": 1.12}[temp_scenario]
+        total_scenario_coeff = hydro_coeff * temp_coeff
+
+        # 6 Aylık Projeksiyonu Hesapla
+        try:
+            future_months = []
+            today = datetime.now()
+            for i in range(1, 7):
+                f_date = (today + pd.DateOffset(months=i))
+                future_months.append(f_date)
             
-            if last_year_data.empty:
-                st.error("Bu ay için geçen yılın verisi bulunamadı.")
-            else:
-                last_year_mean = last_year_data['price'].mean()
-                recent_2026 = df_ptf[(df_ptf.index.year == 2026) & (df_ptf.index.month.isin([1,2,3,4]))]['price'].mean()
-                past_2025 = df_ptf[(df_ptf.index.year == 2025) & (df_ptf.index.month.isin([1,2,3,4]))]['price'].mean()
-                trend_ratio = recent_2026 / past_2025 if past_2025 > 0 else 1.0
-                forecast_mean = last_year_mean * trend_ratio
+            # Trend Hesaplama (2026 vs 2025 ilk 4 ay)
+            recent_2026 = df_ptf[(df_ptf.index.year == 2026) & (df_ptf.index.month.isin([1,2,3,4]))]['price'].mean()
+            past_2025 = df_ptf[(df_ptf.index.year == 2025) & (df_ptf.index.month.isin([1,2,3,4]))]['price'].mean()
+            base_trend = recent_2026 / past_2025 if past_2025 > 0 else 1.0
+            
+            forecasts = []
+            for m in future_months:
+                # Geçen yılın aynı ayı
+                ly_month = df_ptf[(df_ptf.index.year == 2025) & (df_ptf.index.month == m.month)]['price'].mean()
+                if pd.isna(ly_month): ly_month = df_ptf['price'].mean() # Fallback
                 
-                c1, c2, c3 = st.columns(3)
-                with c1:
-                    st.markdown(f"""
-                    <div class="glass-card card-accent-teal">
-                        <div class="card-icon">📆</div>
-                        <div class="card-label">Geçen Yıl Aynı Ay</div>
-                        <div class="card-value teal">{last_year_mean:,.0f} ₺</div>
-                    </div>""", unsafe_allow_html=True)
-                with c2:
-                    trend_dir = "↘ Düşüş" if trend_ratio < 1 else "↗ Artış"
-                    trend_pct = abs((1 - trend_ratio) * 100)
-                    color_class = "coral" if trend_ratio < 1 else "teal"
-                    accent = "coral" if trend_ratio < 1 else "teal"
-                    st.markdown(f"""
-                    <div class="glass-card card-accent-{accent}">
-                        <div class="card-icon">📊</div>
-                        <div class="card-label">Yıllık Trend</div>
-                        <div class="card-value {color_class}">%{trend_pct:,.1f} {trend_dir}</div>
-                    </div>""", unsafe_allow_html=True)
-                with c3:
-                    st.markdown(f"""
-                    <div class="glass-card card-accent-gold">
-                        <div class="card-icon">🎯</div>
-                        <div class="card-label">Beklenen {target_month}</div>
-                        <div class="card-value gold">{forecast_mean:,.0f} ₺</div>
-                    </div>""", unsafe_allow_html=True)
-                    
-                st.markdown("<br>", unsafe_allow_html=True)
-                
-                monthly_actual_plot = monthly_actual.reset_index()
-                monthly_actual_plot['Ay'] = monthly_actual_plot['date'].dt.strftime('%Y-%m')
-                monthly_actual_plot['Tip'] = 'Gerçekleşen'
-                
-                forecast_row = pd.DataFrame({
-                    'date': [pd.to_datetime(f"{selected_year_num}-{selected_month_num:02d}-01").tz_localize('UTC')],
-                    'Ay': [f"{selected_year_num}-{selected_month_num:02d}"],
-                    'price': [forecast_mean],
-                    'Tip': ['Beklenti']
+                # Projeksiyon = Geçen Yıl * Trend * Senaryo
+                val = ly_month * base_trend * total_scenario_coeff
+                forecasts.append({
+                    'date': m.replace(day=1, hour=0, minute=0, second=0),
+                    'Ay': m.strftime('%Y-%m'),
+                    'price': val,
+                    'Tip': 'Projeksiyon'
                 })
-                
-                plot_df = pd.concat([monthly_actual_plot, forecast_row], ignore_index=True)
-                plot_df.sort_values('date', inplace=True)
-                
-                fig3 = px.bar(plot_df, x='Ay', y='price', color='Tip',
-                             color_discrete_map={'Gerçekleşen': '#4ECDC4', 'Beklenti': '#FFD93D'})
-                fig3.update_traces(texttemplate='%{y:.3s}', textposition='outside')
-                fig3.update_layout(**make_chart_layout())
-                fig3.update_layout(xaxis=dict(showgrid=False))
-                st.plotly_chart(fig3, use_container_width=True)
+            
+            df_forecast = pd.DataFrame(forecasts)
+            
+            # Grafik İçin Birleştir
+            past_plot = m_df.reset_index()[['date', 'Ay', 'price']].copy()
+            past_plot['Tip'] = 'Gerçekleşen'
+            
+            full_plot_df = pd.concat([past_plot, df_forecast], ignore_index=True)
+            full_plot_df['Ay_Etiket'] = full_plot_df['date'].apply(lambda x: f"{tr_months[x.strftime('%m')]} {x.year}")
+            
+            # Grafik
+            fig_proj = px.line(full_plot_df, x='Ay_Etiket', y='price', color='Tip',
+                               color_discrete_map={'Gerçekleşen': '#4ECDC4', 'Projeksiyon': '#FFD93D'},
+                               markers=True, title="6 Aylık PTF Projeksiyonu")
+            
+            fig_proj.update_layout(**make_chart_layout())
+            st.plotly_chart(fig_proj, use_container_width=True)
+            
+            # Bilgi Kartları
+            st.markdown("<div style='display:flex; gap:15px; overflow-x:auto;'>", unsafe_allow_html=True)
+            cols = st.columns(6)
+            for i, row in df_forecast.iterrows():
+                with cols[i]:
+                    st.markdown(f"""
+                    <div class="glass-card" style="padding:10px; text-align:center; min-width:140px;">
+                        <div style="font-size:0.8rem; color:rgba(255,255,255,0.6)">{tr_months[row['Ay'].split('-')[1]]}</div>
+                        <div style="font-size:1.1rem; font-weight:bold; color:#FFD93D">{row['price']:,.0f} ₺</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        except Exception as e:
+            st.error(f"Projeksiyon hesaplanırken hata oluştu: {e}")
 
     # Footer
     st.markdown("""
