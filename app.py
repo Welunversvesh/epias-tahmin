@@ -1,5 +1,11 @@
-# Force Redeploy: 2026-05-03 16:45
+# Force Redeploy: 2026-05-03 16:55
 import streamlit as st
+# Bellek Temizleme (Hata Giderme İçin)
+if 'cache_cleared' not in st.session_state:
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    st.session_state['cache_cleared'] = True
+
 import pandas as pd
 import xgboost as xgb
 import pickle
