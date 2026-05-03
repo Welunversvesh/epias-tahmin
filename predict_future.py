@@ -40,7 +40,7 @@ def load_recent_raw_data(days=15):
         
     df_ptf = load_combined('ptf', cols=['price'])
     df_load = load_combined('load_plan', cols=['lep'])
-    df_kgup = load_combined('kgup', cols=['toplam', 'ruzgar', 'gunes'], rename_dict={'toplam': 'planned_total_gen'})
+    df_kgup = load_combined('kgup', cols=['toplam', 'ruzgar', 'gunes', 'dogalgaz'], rename_dict={'toplam': 'planned_total_gen', 'dogalgaz': 'planned_gas_gen'})
     df_smp = load_combined('smp', cols=['systemMarginalPrice'])
     df_rtg = load_combined('rtg', cols=['total'], rename_dict={'total': 'actual_total_gen'})
     df_pio = load_combined('pi_offer', cols=['offerVolume'], rename_dict={'offerVolume': 'price_independent_sales'})
