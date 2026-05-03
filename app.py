@@ -245,7 +245,9 @@ def main():
         return
 
     model, features = load_model()
-    X = df[features]
+    # Sadece veride olan ozellikleri sec (Hata onleme)
+    existing_features = [f for f in features if f in df.columns]
+    X = df[existing_features]
     df['predicted_price'] = model.predict(X)
     
     # --- EKSİK VERİ TAMAMLAMA (Interpolation) ---
