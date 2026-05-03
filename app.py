@@ -449,6 +449,8 @@ def main():
                             'gunes': 'Güneş Plan',
                             'temperature': 'Sıcaklık (C)',
                             'wind_speed': 'Rüzgar Hızı (km/h)',
+                            'precipitation': 'Yağış (mm)',
+                            'cloud_cover': 'Bulutluluk (%)',
                             'price_independent_sales': 'Bağımsız Satış'
                         }
                         
