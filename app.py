@@ -499,14 +499,17 @@ def main():
                 'Hata (%)': "%{:,.1f}"
             }), use_container_width=True)
 
-            # Grafik
+            # Grafik (Line Chart olarak güncellendi)
             st.markdown("<br>", unsafe_allow_html=True)
             fig_m = go.Figure()
-            fig_m.add_trace(go.Bar(x=m_df['Ay'], y=m_df['price'], name='Gerçekleşen Ort.', marker_color='#4ECDC4'))
-            fig_m.add_trace(go.Bar(x=m_df['Ay'], y=m_df['predicted_price'], name='Model Tahmin Ort.', marker_color='#FF6B6B'))
+            fig_m.add_trace(go.Scatter(x=m_df['Ay'], y=m_df['price'], name='Gerçekleşen Ort.', 
+                                     line=dict(color='#4ECDC4', width=3, shape='spline'),
+                                     mode='lines+markers'))
+            fig_m.add_trace(go.Scatter(x=m_df['Ay'], y=m_df['predicted_price'], name='Model Tahmin Ort.', 
+                                     line=dict(color='#FF6B6B', width=3, dash='dot', shape='spline'),
+                                     mode='lines+markers'))
             
-            fig_m.update_layout(**make_chart_layout(title="Aylık Ortalama PTF Karşılaştırması"))
-            fig_m.update_layout(barmode='group')
+            fig_m.update_layout(**make_chart_layout(title="Aylık Ortalama PTF Trend Karşılaştırması"))
             st.plotly_chart(fig_m, use_container_width=True)
             
         except Exception as e:
