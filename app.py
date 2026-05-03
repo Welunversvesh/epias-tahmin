@@ -281,10 +281,11 @@ def main():
             actual_mean = filtered_df['price'].mean()
             predicted_mean = filtered_df['predicted_price'].mean()
             mae = abs(filtered_df['price'] - filtered_df['predicted_price']).mean()
-            valid = filtered_df[filtered_df['price'] > 10]
-            if len(valid) > 0:
-                mape = (abs(valid['price'] - valid['predicted_price']) / valid['price']).mean() * 100
-                accuracy = max(0, 100 - mape)
+            # Model Doğruluğu: MAPE yerine daha stabil bir skor
+            # MAE'yi ortalama fiyata oranlayıp % bazlı bir skor üretiyoruz
+            if actual_mean > 0:
+                error_ratio = mae / actual_mean
+                accuracy = max(0, (1 - error_ratio) * 100)
             else:
                 accuracy = 0
 
@@ -425,7 +426,8 @@ def main():
                         
                         st.markdown("""<div class="section-header"><span class="icon">📋</span><span class="text">Saatlik Detay</span><span class="line"></span></div>""", unsafe_allow_html=True)
                         res_display = res.copy()
-                        res_display.index = res_display.index.strftime('%H:%00')
+                        # Tarih ve Saati daha şık göster (Örn: 05 Mayıs 14:00)
+                        res_display.index = res_display.index.strftime('%d %b %H:%00')
                         
                         # Sütunları Türkçeleştir ve sırala
                         col_map = {
