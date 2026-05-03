@@ -57,6 +57,20 @@ def load_and_merge_data():
         print(f"    [-] Hava durumu verisi yuklenemedi: {e}")
         df_w = pd.DataFrame()
 
+    # Yan Hizmetler (SFK/PFK) Verileri
+    print("[*] Yan hizmetler verileri yukleniyor...")
+    try:
+        df_anc_25 = pd.read_csv('ancillary_2025.csv')
+        df_anc_26 = pd.read_csv('ancillary_2026.csv')
+        df_anc = pd.concat([df_anc_25, df_anc_26], ignore_index=True)
+        df_anc['date'] = pd.to_datetime(df_anc['date'], utc=True)
+        df_anc.set_index('date', inplace=True)
+        df_anc = df_anc[~df_anc.index.duplicated(keep='first')]
+        print(f"    [+] {len(df_anc)} satir yan hizmetler verisi yuklendi.")
+    except Exception as e:
+        print(f"    [-] Yan hizmetler verisi yuklenemedi: {e}")
+        df_anc = pd.DataFrame()
+
     print("[*] Tum Tablolar birlestiriliyor...")
     df = df_ptf[['price']].join(df_load, how='inner') \
                           .join(df_kgup, how='inner') \
@@ -69,6 +83,9 @@ def load_and_merge_data():
 
     if not df_w.empty:
         df = df.join(df_w, how='left')
+
+    if not df_anc.empty:
+        df = df.join(df_anc, how='left')
                           
     # NaN olanlari ileriye/geriye donuk doldurma
     df.ffill(inplace=True)
@@ -114,6 +131,8 @@ def create_features(df):
     df['price_lag_48'] = df['price'].shift(48)
     df['price_lag_168'] = df['price'].shift(168)
     df['smp_lag_24'] = df['systemMarginalPrice'].shift(24)
+    df['sfk_lag_24'] = df['sfk_price'].shift(24)
+    df['pfk_lag_24'] = df['pfk_price'].shift(24)
     
     # 2. Plan vs Gerçekleşme Sapması (Dünden gelen sapma)
     # Gerçekleşen üretim - Planlanan üretim (Ne kadar saptık?)
