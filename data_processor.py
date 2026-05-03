@@ -20,7 +20,7 @@ def load_and_merge_data():
         
     df_ptf = load_combined('ptf', cols=['price'])
     df_load = load_combined('load_plan', cols=['lep'])
-    df_kgup = load_combined('kgup', cols=['toplam', 'ruzgar', 'gunes'], rename_dict={'toplam': 'planned_total_gen'})
+    df_kgup = load_combined('kgup', cols=['toplam', 'ruzgar', 'gunes', 'dogalgaz'], rename_dict={'toplam': 'planned_total_gen', 'dogalgaz': 'planned_gas_gen'})
     
     print("[*] Yeni Faz 2 Verileri yükleniyor (2025 ve 2026)...")
     df_smp = load_combined('smp', cols=['systemMarginalPrice'])
@@ -43,6 +43,20 @@ def load_and_merge_data():
         print(f"    [-] Dogalgaz verisi yuklenemedi: {e}")
         df_gas = pd.DataFrame()
     
+    # Hava Durumu Verileri (Sicaklik, Ruzgar, Gunes)
+    print("[*] Hava durumu verileri yukleniyor...")
+    try:
+        df_w_25 = pd.read_csv('weather_2025.csv')
+        df_w_26 = pd.read_csv('weather_2026.csv')
+        df_w = pd.concat([df_w_25, df_w_26], ignore_index=True)
+        df_w['date'] = pd.to_datetime(df_w['date'], utc=True)
+        df_w.set_index('date', inplace=True)
+        df_w = df_w[~df_w.index.duplicated(keep='first')]
+        print(f"    [+] {len(df_w)} satir hava durumu verisi yuklendi.")
+    except Exception as e:
+        print(f"    [-] Hava durumu verisi yuklenemedi: {e}")
+        df_w = pd.DataFrame()
+
     print("[*] Tum Tablolar birlestiriliyor...")
     df = df_ptf[['price']].join(df_load, how='inner') \
                           .join(df_kgup, how='inner') \
@@ -52,6 +66,9 @@ def load_and_merge_data():
     
     if not df_gas.empty:
         df = df.join(df_gas, how='left')
+
+    if not df_w.empty:
+        df = df.join(df_w, how='left')
                           
     # NaN olanlari ileriye/geriye donuk doldurma
     df.ffill(inplace=True)
