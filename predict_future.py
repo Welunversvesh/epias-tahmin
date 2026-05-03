@@ -64,6 +64,8 @@ def load_recent_raw_data(days=15):
         df_anc = pd.concat([df_anc_25, df_anc_26], ignore_index=True)
         df_anc['date'] = pd.to_datetime(df_anc['date'], utc=True)
         df_anc.set_index('date', inplace=True)
+        # Sadece fiyatlari alalim, miktarlar modelde yok
+        df_anc = df_anc[['sfk_price', 'pfk_price']]
         df_anc = df_anc[~df_anc.index.duplicated(keep='first')]
     except:
         df_anc = pd.DataFrame()
