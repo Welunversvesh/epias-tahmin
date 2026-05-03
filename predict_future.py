@@ -5,6 +5,47 @@ import pickle
 from eptr2 import EPTR2
 from datetime import datetime, timedelta
 import pytz
+from functools import lru_cache
+from pathlib import Path
+
+from snapping import apply_price_snapping
+
+BASE_DIR = Path(__file__).resolve().parent
+LOCAL_TZ = "Europe/Istanbul"
+
+def local_date_mask(index, date_str):
+    if index.tz is None:
+        local_index = index.tz_localize("UTC").tz_convert(LOCAL_TZ)
+    else:
+        local_index = index.tz_convert(LOCAL_TZ)
+    return local_index.strftime('%Y-%m-%d') == date_str
+
+def file_mtime(filename):
+    path = BASE_DIR / filename
+    return path.stat().st_mtime if path.exists() else None
+
+def hourly_weather_fallback(target_date_str):
+    idx = pd.date_range(
+        target_date_str,
+        periods=24,
+        freq='h',
+        tz=LOCAL_TZ
+    ).tz_convert('UTC')
+    return pd.DataFrame({
+        "temperature": [15] * 24,
+        "wind_speed": [10] * 24,
+        "solar_radiation": [0] * 24,
+        "precipitation": [0] * 24,
+        "cloud_cover": [50] * 24,
+    }, index=idx)
+
+@lru_cache(maxsize=1)
+def load_model_and_features(model_mtime=None, features_mtime=None):
+    model = xgb.XGBRegressor()
+    model.load_model(str(BASE_DIR / "ptf_xgboost_model.json"))
+    with open(BASE_DIR / "model_features.pkl", "rb") as f:
+        features = pickle.load(f)
+    return model, features
 
 def get_turkish_holidays(years=[2024, 2025, 2026]):
     holidays = []
@@ -25,8 +66,10 @@ def get_turkish_holidays(years=[2024, 2025, 2026]):
 def load_recent_raw_data(days=15):
     # En güncel ham verileri yükle (Sadece son N günü alarak bellek tasarrufu)
     def load_combined(prefix, cols=None, rename_dict=None):
-        df_2025 = pd.read_csv(f"{prefix}_2025_saatlik_ham.csv" if prefix == 'ptf' else f"{prefix}_2025.csv")
-        df_2026 = pd.read_csv(f"{prefix}_2026_saatlik_ham.csv" if prefix == 'ptf' else f"{prefix}_2026.csv")
+        file_2025 = f"{prefix}_2025_saatlik_ham.csv" if prefix == 'ptf' else f"{prefix}_2025.csv"
+        file_2026 = f"{prefix}_2026_saatlik_ham.csv" if prefix == 'ptf' else f"{prefix}_2026.csv"
+        df_2025 = pd.read_csv(BASE_DIR / file_2025)
+        df_2026 = pd.read_csv(BASE_DIR / file_2026)
         df = pd.concat([df_2025, df_2026], ignore_index=True)
         df['date'] = pd.to_datetime(df['date'], utc=True)
         df.set_index('date', inplace=True)
@@ -47,8 +90,8 @@ def load_recent_raw_data(days=15):
     
     # Dogalgaz fiyati
     try:
-        df_gas_25 = pd.read_csv('gas_prices_2025.csv')
-        df_gas_26 = pd.read_csv('gas_prices_2026.csv')
+        df_gas_25 = pd.read_csv(BASE_DIR / 'gas_prices_2025.csv')
+        df_gas_26 = pd.read_csv(BASE_DIR / 'gas_prices_2026.csv')
         df_gas = pd.concat([df_gas_25, df_gas_26], ignore_index=True)
         df_gas['date'] = pd.to_datetime(df_gas['date'], utc=True)
         df_gas.set_index('date', inplace=True)
@@ -59,8 +102,8 @@ def load_recent_raw_data(days=15):
     
     # Yan Hizmetler
     try:
-        df_anc_25 = pd.read_csv('ancillary_2025.csv')
-        df_anc_26 = pd.read_csv('ancillary_2026.csv')
+        df_anc_25 = pd.read_csv(BASE_DIR / 'ancillary_2025.csv')
+        df_anc_26 = pd.read_csv(BASE_DIR / 'ancillary_2026.csv')
         df_anc = pd.concat([df_anc_25, df_anc_26], ignore_index=True)
         df_anc['date'] = pd.to_datetime(df_anc['date'], utc=True)
         df_anc.set_index('date', inplace=True)
@@ -92,7 +135,7 @@ def fetch_future_plan(target_date_str):
         username = st.secrets["epias"]["username"]
         password = st.secrets["epias"]["password"]
     except Exception:
-        with open("credentials.txt", "r") as f:
+        with open(BASE_DIR / "credentials.txt", "r") as f:
             lines = [line.strip() for line in f.readlines() if line.strip()]
             username = lines[0]
             password = lines[1]
@@ -144,28 +187,39 @@ def predict_future_day(target_date_str):
             "latitude": 39.93, "longitude": 32.86, # Ankara temsilci
             "start_date": target_date_str, "end_date": target_date_str,
             "hourly": "temperature_2m,windspeed_10m,direct_radiation,precipitation,cloudcover",
-            "timezone": "Europe/Istanbul"
+            "timezone": LOCAL_TZ
         }
-        w_res = requests.get(w_url, params=w_params, timeout=10).json()
+        response = requests.get(w_url, params=w_params, timeout=10)
+        response.raise_for_status()
+        w_res = response.json()
+        hourly = w_res.get("hourly", {})
+        required_weather_cols = [
+            "temperature_2m", "windspeed_10m", "direct_radiation",
+            "precipitation", "cloudcover"
+        ]
+        if not all(col in hourly for col in required_weather_cols):
+            raise ValueError("Open-Meteo yanıtında beklenen saatlik alanlar yok.")
+
         df_weather = pd.DataFrame({
-            "temperature": w_res["hourly"]["temperature_2m"],
-            "wind_speed": w_res["hourly"]["windspeed_10m"],
-            "solar_radiation": w_res["hourly"]["direct_radiation"],
-            "precipitation": w_res["hourly"]["precipitation"],
-            "cloud_cover": w_res["hourly"]["cloudcover"]
+            "temperature": hourly["temperature_2m"],
+            "wind_speed": hourly["windspeed_10m"],
+            "solar_radiation": hourly["direct_radiation"],
+            "precipitation": hourly["precipitation"],
+            "cloud_cover": hourly["cloudcover"]
         })
-        # Saatleri uyduralım
-        df_weather.index = pd.to_datetime(target_date_str) + pd.to_timedelta(range(24), unit='h')
-        df_weather.index = df_weather.index.tz_localize('Europe/Istanbul').tz_convert('UTC')
+        if "time" in hourly:
+            df_weather.index = pd.to_datetime(hourly["time"]).tz_localize(LOCAL_TZ).tz_convert('UTC')
+        else:
+            df_weather.index = hourly_weather_fallback(target_date_str).index
+        df_weather = df_weather.reindex(hourly_weather_fallback(target_date_str).index).ffill().bfill()
     except Exception as e:
         print(f"[-] Hava durumu tahmini cekilemedi: {e}")
-        df_weather = pd.DataFrame({"temperature": [15]*24, "wind_speed": [10]*24, "solar_radiation": [0]*24}, 
-                                  index=pd.to_datetime(target_date_str) + pd.to_timedelta(range(24), unit='h'))
+        df_weather = hourly_weather_fallback(target_date_str)
     
-    target_dt = pd.to_datetime(target_date_str).tz_localize('UTC') if len(target_date_str.split('-'))==3 else pd.to_datetime(target_date_str)
+    target_dt = pd.Timestamp(target_date_str)
     t_minus_7 = target_dt - pd.Timedelta(days=7)
     t_minus_7_str = t_minus_7.strftime('%Y-%m-%d')
-    df_t7 = df_past[df_past.index.strftime('%Y-%m-%d') == t_minus_7_str].copy()
+    df_t7 = df_past[local_date_mask(df_past.index, t_minus_7_str)].copy()
     
     if df_t7.empty:
         return None, False, "T-7 referans verisi bulunamadığı için tahmin yapılamıyor."
@@ -255,23 +309,21 @@ def predict_future_day(target_date_str):
     df.drop(['systemMarginalPrice', 'actual_total_gen', 'gen_deviation'], axis=1, inplace=True)
     
     # Sadece hedef günü filtrele
-    df_target = df[df.index.strftime('%Y-%m-%d') == target_date_str].copy()
+    df_target = df[local_date_mask(df.index, target_date_str)].copy()
     
     if len(df_target) == 0:
         return None, False, "Hedef gün için özellik oluşturulamadı."
         
     # 5. Modeli Yükle ve Tahmin Et
-    model = xgb.XGBRegressor()
-    model.load_model("ptf_xgboost_model.json")
+    model, features = load_model_and_features(
+        file_mtime("ptf_xgboost_model.json"),
+        file_mtime("model_features.pkl")
+    )
     # --- KESİN TEMİZLİK (Sinsi sütunları sil) ---
     for col in ['sfk_amount', 'pfk_amount', 'sfk_amount_lag_24', 'pfk_amount_lag_24']:
         if col in df_target.columns:
             df_target.drop(col, axis=1, inplace=True)
     # --------------------------------------------
-
-    with open("model_features.pkl", "rb") as f:
-        features = pickle.load(f)
-    
     # Modelin bekledigi ama veride olmayan bir sey var mi?
     missing = [c for c in features if c not in df_target.columns]
     if missing:
@@ -282,10 +334,6 @@ def predict_future_day(target_date_str):
     df_target['predicted_price'] = predictions
     
     # Kural Tabanlı Keskinleştirme (Snapping)
-    import snapping
-    import importlib
-    importlib.reload(snapping)
-    from snapping import apply_price_snapping
     df_target['predicted_price'] = apply_price_snapping(df_target)
     
     cols_to_return = [
