@@ -491,8 +491,23 @@ def main():
             
             # Tabloyu göster
             st.subheader("📋 Aylık Ortalama Kıyaslama Tablosu")
+            
+            # Ay formatını Türkçeleştir (Örn: 2026-03 -> Mart 2026)
+            tr_months = {
+                "01": "Ocak", "02": "Şubat", "03": "Mart", "04": "Nisan",
+                "05": "Mayıs", "06": "Haziran", "07": "Temmuz", "08": "Ağustos",
+                "09": "Eylül", "10": "Ekim", "11": "Kasım", "12": "Aralık"
+            }
+            
+            def format_month(ay_str):
+                y, m = ay_str.split("-")
+                return f"{tr_months[m]} {y}"
+
             disp_m_df = m_df[['Ay', 'price', 'predicted_price', 'Sapma (%)']].copy()
-            disp_m_df.columns = ['Ay', 'Gerçekleşen Ort.', 'Model Tahmin Ort.', 'Hata (%)']
+            disp_m_df['Ay'] = disp_m_df['Ay'].apply(format_month)
+            disp_m_df.set_index('Ay', inplace=True) # Tarih damgasını (index) bununla değiştir
+            
+            disp_m_df.columns = ['Gerçekleşen Ort.', 'Model Tahmin Ort.', 'Hata (%)']
             st.dataframe(disp_m_df.style.format({
                 'Gerçekleşen Ort.': "{:,.2f} ₺",
                 'Model Tahmin Ort.': "{:,.2f} ₺",
