@@ -48,6 +48,17 @@ def format_dt(value):
     except Exception:
         return str(value)
 
+def format_percent(value):
+    if value is None:
+        return "Hesaplanmadı"
+    try:
+        value = float(value)
+    except Exception:
+        return str(value)
+    if not np.isfinite(value) or abs(value) > 1000:
+        return "Hesaplanmadı"
+    return f"%{value:,.2f}"
+
 def run_update_pipeline():
     env = os.environ.copy()
     try:
@@ -82,7 +93,7 @@ def render_model_management(container=None, button_key="update_model"):
         with m2:
             st.metric("Son Veri", format_dt((status or {}).get('data_end') or active_metrics.get('data_end')))
         with m3:
-            st.metric("MAPE", f"%{active_metrics.get('mape', 0):,.2f}" if active_metrics else "Henüz yok")
+            st.metric("MAPE", format_percent(active_metrics.get('mape')) if active_metrics else "Henüz yok")
 
         if active_metrics:
             st.write(
