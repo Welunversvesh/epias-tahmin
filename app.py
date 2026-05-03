@@ -4,17 +4,126 @@ import streamlit as st
 import pandas as pd
 import xgboost as xgb
 import pickle
-import os
+import json
 import io
 import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
 import pytz
 import numpy as np
+import os
+import subprocess
+import sys
+from pathlib import Path
 
-# Bellek Temizleme
-st.cache_data.clear()
-st.cache_resource.clear()
+from snapping import apply_price_snapping
+
+BASE_DIR = Path(__file__).resolve().parent
+LOCAL_TZ = "Europe/Istanbul"
+
+def file_mtime(filename):
+    path = BASE_DIR / filename
+    return path.stat().st_mtime if path.exists() else None
+
+def to_local_index(index):
+    if index.tz is None:
+        return index.tz_localize("UTC").tz_convert(LOCAL_TZ)
+    return index.tz_convert(LOCAL_TZ)
+
+def read_json_file(filename, default=None):
+    path = BASE_DIR / filename
+    if not path.exists():
+        return default if default is not None else {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return default if default is not None else {}
+
+def format_dt(value):
+    if not value:
+        return "Henüz yok"
+    try:
+        dt = pd.to_datetime(value, utc=True).tz_convert(LOCAL_TZ)
+        return dt.strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return str(value)
+
+def run_update_pipeline():
+    env = os.environ.copy()
+    try:
+        epias = st.secrets.get("epias", {})
+        if epias.get("username") and epias.get("password"):
+            env["EPIAS_USERNAME"] = epias["username"]
+            env["EPIAS_PASSWORD"] = epias["password"]
+    except Exception:
+        pass
+
+    return subprocess.run(
+        [sys.executable, str(BASE_DIR / "update_pipeline.py")],
+        cwd=BASE_DIR,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+def render_model_management(container=None, button_key="update_model"):
+    container = container or st
+    status = read_json_file("model_status.json")
+    metrics = read_json_file("model_metrics.json")
+    active_metrics = status.get("metrics") or metrics
+
+    with container.expander("🧠 Model Yönetimi", expanded=True):
+        st.caption("Verileri çekip modeli yeniden eğitir. İşlem bitene kadar sayfayı kapatmayın.")
+        m1, m2, m3 = st.columns(3)
+        with m1:
+            st.metric("Son Eğitim", format_dt(active_metrics.get('trained_at')))
+        with m2:
+            st.metric("Son Veri", format_dt((status or {}).get('data_end') or active_metrics.get('data_end')))
+        with m3:
+            st.metric("MAPE", f"%{active_metrics.get('mape', 0):,.2f}" if active_metrics else "Henüz yok")
+
+        if active_metrics:
+            st.write(
+                f"**MAE:** {active_metrics.get('mae', 0):,.0f} TL/MWh  "
+                f"**Satır:** {active_metrics.get('rows', 0):,.0f}"
+            )
+        if status:
+            state = "Başarılı" if status.get("ok") else "Son işlem başarısız/yarım"
+            st.caption(f"Son pipeline: {state} · {format_dt(status.get('finished_at'))}")
+
+        if st.button("🔄 Verileri Çek ve Modeli Eğit", use_container_width=True, key=button_key):
+            with st.spinner("Veriler çekiliyor, model yeniden eğitiliyor..."):
+                result = run_update_pipeline()
+
+            if result.returncode == 0:
+                load_data.clear()
+                load_model.clear()
+                st.success("Model güncellendi. Sayfa yeni modeli kullanacak.")
+                st.rerun()
+
+            st.error("Güncelleme tamamlanamadı. Eski model kullanılmaya devam ediyor.")
+            with st.expander("Hata detayı"):
+                st.code((result.stderr or result.stdout)[-4000:])
+
+def render_sidebar_model_management():
+    status = read_json_file("model_status.json")
+    metrics = read_json_file("model_metrics.json")
+    active_metrics = status.get("metrics") or metrics
+
+    with st.sidebar.expander("🧠 Model Yönetimi", expanded=False):
+        st.write(f"**Son eğitim:** {format_dt(active_metrics.get('trained_at'))}")
+        st.write(f"**Son veri:** {format_dt((status or {}).get('data_end') or active_metrics.get('data_end'))}")
+        if st.button("🔄 Verileri Çek ve Modeli Eğit", use_container_width=True, key="update_model_sidebar"):
+            with st.spinner("Veriler çekiliyor, model yeniden eğitiliyor..."):
+                result = run_update_pipeline()
+            if result.returncode == 0:
+                load_data.clear()
+                load_model.clear()
+                st.success("Model güncellendi.")
+                st.rerun()
+            st.error("Güncelleme tamamlanamadı.")
 
 st.set_page_config(page_title="EPİAŞ PTF Kahini", page_icon="⚡", layout="wide")
 
@@ -199,17 +308,18 @@ st.markdown("""
 # VERİ VE MODEL
 # ─────────────────────────────────────────────
 @st.cache_resource
-def load_model():
+def load_model(model_mtime, features_mtime):
     model = xgb.XGBRegressor()
-    model.load_model("ptf_xgboost_model.json")
-    with open("model_features.pkl", "rb") as f:
+    model.load_model(str(BASE_DIR / "ptf_xgboost_model.json"))
+    with open(BASE_DIR / "model_features.pkl", "rb") as f:
         features = pickle.load(f)
     return model, features
 
 @st.cache_data
-def load_data():
-    if os.path.exists("model_ready_data.csv"):
-        df = pd.read_csv("model_ready_data.csv", index_col='date', parse_dates=True)
+def load_data(data_mtime):
+    data_path = BASE_DIR / "model_ready_data.csv"
+    if data_path.exists():
+        df = pd.read_csv(data_path, index_col='date', parse_dates=True)
         return df
     return None
 
@@ -240,31 +350,43 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
-    df = load_data()
+    render_model_management(button_key="update_model_main")
+
+    df = load_data(file_mtime("model_ready_data.csv"))
     if df is None:
         st.error("Veri seti bulunamadı! Lütfen arkaplanda veri çekme ve işleme adımlarını tamamlayın.")
         return
+    df = df.copy()
 
-    model, features = load_model()
-    # Sadece veride olan ozellikleri sec (Hata onleme)
-    existing_features = [f for f in features if f in df.columns]
-    X = df[existing_features]
+    try:
+        model, features = load_model(
+            file_mtime("ptf_xgboost_model.json"),
+            file_mtime("model_features.pkl")
+        )
+    except Exception as e:
+        st.error(f"Model yüklenemedi: {e}")
+        return
+
+    missing_features = [f for f in features if f not in df.columns]
+    if missing_features:
+        st.error("Modelin beklediği bazı geçmiş veri kolonları bulunamadı: " + ", ".join(missing_features))
+        return
+
+    X = df[features]
     df['predicted_price'] = model.predict(X)
     
     # --- EKSİK VERİ TAMAMLAMA (Interpolation) ---
     # Eğer veride saatlik boşluklar varsa (Mayıs-Haziran 2025 gibi), buraları doldurur.
-    df = df.resample('h').mean()
+    df = df.resample('h').mean(numeric_only=True)
     df['price'] = df['price'].interpolate(method='linear')
     df['predicted_price'] = df['predicted_price'].interpolate(method='linear')
     df.ffill(inplace=True)
     df.bfill(inplace=True)
     # --------------------------------------------
 
-    import snapping
-    import importlib
-    importlib.reload(snapping)
-    from snapping import apply_price_snapping
     df['predicted_price'] = apply_price_snapping(df)
+
+    render_sidebar_model_management()
 
     # Sekmeler
     tab1, tab2, tab3 = st.tabs(["📊  Geçmiş Veri Analizi", "🔮  Gelecek Tahmini (GÖP)", "📅  Gelecek Ay Beklentisi"])
@@ -276,8 +398,9 @@ def main():
         st.sidebar.markdown("### ⚙️ Kontrol Paneli")
         st.sidebar.markdown("---")
         
-        min_date = df.index.min().date()
-        max_date = df.index.max().date()
+        local_index = to_local_index(df.index)
+        min_date = local_index.min().date()
+        max_date = local_index.max().date()
         
         selected_dates = st.sidebar.date_input(
             "📆 Tarih Aralığı",
@@ -291,7 +414,7 @@ def main():
         else:
             start_date = end_date = selected_dates[0]
 
-        mask = (df.index.date >= start_date) & (df.index.date <= end_date)
+        mask = (local_index.date >= start_date) & (local_index.date <= end_date)
         filtered_df = df.loc[mask]
 
         if filtered_df.empty:
@@ -364,7 +487,7 @@ def main():
             
             display_df = filtered_df[['price', 'predicted_price']].copy()
             # Düzeltilen format:
-            display_df.index = display_df.index.strftime('%Y-%m-%d %H:00')
+            display_df.index = to_local_index(display_df.index).strftime('%Y-%m-%d %H:00')
             display_df.columns = ['Gerçek PTF', 'Tahmin']
             st.dataframe(display_df.style.format("{:,.2f}"), use_container_width=True)
             
@@ -447,7 +570,7 @@ def main():
                         st.markdown("""<div class="section-header"><span class="icon">📋</span><span class="text">Saatlik Detay</span><span class="line"></span></div>""", unsafe_allow_html=True)
                         res_display = res.copy()
                         # Düzeltilen format (Gelecek tahmini için):
-                        res_display.index = res_display.index.strftime('%Y-%m-%d %H:00')
+                        res_display.index = to_local_index(res_display.index).strftime('%Y-%m-%d %H:00')
                         
                         # Sütunları Türkçeleştir ve sırala
                         col_map = {
@@ -464,7 +587,8 @@ def main():
                             'price_independent_sales': 'Bağımsız Satış'
                         }
                         
-                        res_display = res_display[list(col_map.keys())].rename(columns=col_map)
+                        display_cols = [c for c in col_map.keys() if c in res_display.columns]
+                        res_display = res_display[display_cols].rename(columns=col_map)
                         st.dataframe(res_display.style.format("{:,.2f}"), use_container_width=True)
                         
                         buf = io.BytesIO()
