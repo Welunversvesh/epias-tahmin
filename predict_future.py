@@ -127,14 +127,16 @@ def predict_future_day(target_date_str):
         w_params = {
             "latitude": 39.93, "longitude": 32.86, # Ankara temsilci
             "start_date": target_date_str, "end_date": target_date_str,
-            "hourly": "temperature_2m,windspeed_10m,direct_radiation",
+            "hourly": "temperature_2m,windspeed_10m,direct_radiation,precipitation,cloudcover",
             "timezone": "Europe/Istanbul"
         }
         w_res = requests.get(w_url, params=w_params, timeout=10).json()
         df_weather = pd.DataFrame({
             "temperature": w_res["hourly"]["temperature_2m"],
             "wind_speed": w_res["hourly"]["windspeed_10m"],
-            "solar_radiation": w_res["hourly"]["direct_radiation"]
+            "solar_radiation": w_res["hourly"]["direct_radiation"],
+            "precipitation": w_res["hourly"]["precipitation"],
+            "cloud_cover": w_res["hourly"]["cloudcover"]
         })
         # Saatleri uyduralım
         df_weather.index = pd.to_datetime(target_date_str) + pd.to_timedelta(range(24), unit='h')
@@ -179,6 +181,8 @@ def predict_future_day(target_date_str):
     df_future['temperature'] = df_weather['temperature']
     df_future['wind_speed'] = df_weather['wind_speed']
     df_future['solar_radiation'] = df_weather['solar_radiation']
+    df_future['precipitation'] = df_weather['precipitation']
+    df_future['cloud_cover'] = df_weather['cloud_cover']
         
     if not plans['pio'].empty:
         df_future['price_independent_sales'] = plans['pio']['price_independent_sales']
@@ -255,7 +259,7 @@ def predict_future_day(target_date_str):
     from snapping import apply_price_snapping
     df_target['predicted_price'] = apply_price_snapping(df_target)
     
-    return df_target[['predicted_price', 'lep', 'planned_total_gen', 'planned_gas_gen', 'ruzgar', 'gunes', 'temperature', 'wind_speed', 'price_independent_sales']], is_simulated, sim_msg
+    return df_target[['predicted_price', 'lep', 'planned_total_gen', 'planned_gas_gen', 'ruzgar', 'gunes', 'temperature', 'wind_speed', 'precipitation', 'cloud_cover', 'price_independent_sales']], is_simulated, sim_msg
 
 if __name__ == "__main__":
     # Test
