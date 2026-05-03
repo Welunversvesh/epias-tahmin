@@ -398,7 +398,7 @@ def main():
     render_sidebar_model_management()
 
     # Sekmeler
-    tab1, tab2, tab3 = st.tabs(["📊  Geçmiş Veri Analizi", "📈  PTF Tahmin", "📅  Gelecek Ay Beklentisi"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊  Geçmiş Veri Analizi", "📈  PTF Tahmin", "📅  Gelecek Ay Beklentisi", "ℹ️  Hakkında"])
     
     # ═══════════════════════════════════════════
     # SEKME 1: GEÇMİŞ VERİ ANALİZİ
@@ -764,6 +764,95 @@ def main():
 
         except Exception as e:
             st.error(f"Projeksiyon hesaplanırken hata oluştu: {e}")
+
+    # ═══════════════════════════════════════════
+    # SEKME 4: HAKKINDA
+    # ═══════════════════════════════════════════
+    with tab4:
+        st.markdown("""<div class="section-header"><span class="text">Model ve Veri Yapısı</span><span class="line"></span></div>""", unsafe_allow_html=True)
+
+        st.markdown("""
+        Bu uygulama, EPİAŞ PTF fiyatlarını saatlik seviyede tahmin etmek için geliştirilmiş bir karar destek aracıdır.
+        Model, geçmiş piyasa fiyatlarını tek başına ezberlemek yerine arz, talep, üretim planı, hava durumu,
+        yakıt maliyeti ve piyasa davranışını temsil eden çok sayıda değişkeni birlikte değerlendirir.
+        """)
+
+        about_c1, about_c2, about_c3 = st.columns(3)
+        with about_c1:
+            st.metric("Model Tipi", "XGBoost")
+        with about_c2:
+            st.metric("Özellik Sayısı", f"{len(features)}")
+        with about_c3:
+            st.metric("Saatlik Kayıt", f"{len(df):,}")
+
+        st.markdown("""<div class="section-header"><span class="text">Kullandığımız Veri Aileleri</span><span class="line"></span></div>""", unsafe_allow_html=True)
+
+        info_cols = st.columns(2)
+        with info_cols[0]:
+            st.markdown("""
+            **Piyasa ve fiyat verileri**
+
+            - PTF geçmiş saatlik fiyatları
+            - SMF gecikmeli değerleri
+            - Fiyattan bağımsız satış teklif hacmi
+            - Yan hizmet fiyatları: SFK ve PFK
+
+            **Arz-talep ve üretim planları**
+
+            - Yük tahmin planı
+            - KGÜP toplam üretim planı
+            - Rüzgar üretim planı
+            - Güneş üretim planı
+            - Doğalgaz üretim planı
+            - Plan-gerçekleşme sapması gecikmeli etkisi
+            """)
+
+        with info_cols[1]:
+            st.markdown("""
+            **Dış değişkenler**
+
+            - Doğalgaz referans fiyatı
+            - Sıcaklık
+            - Rüzgar hızı
+            - Güneş radyasyonu
+            - Yağış
+            - Bulutluluk
+
+            **Zaman ve davranış özellikleri**
+
+            - Saat, haftanın günü, ay
+            - Hafta sonu ve resmi tatil bilgisi
+            - 24, 48 ve 168 saatlik fiyat gecikmeleri
+            - 24 saatlik oynaklık ve momentum
+            - 24 ve 168 saatlik hareketli ortalamalar
+            - Arz-talep ve teklif oranları
+            """)
+
+        st.markdown("""<div class="section-header"><span class="text">XGBoost Ne Yapar?</span><span class="line"></span></div>""", unsafe_allow_html=True)
+
+        st.markdown("""
+        XGBoost, çok sayıda karar ağacını ardışık şekilde eğiten güçlü bir makine öğrenmesi yöntemidir.
+        Her yeni ağaç, önceki ağaçların hatalarını azaltmaya çalışır. Bu yaklaşım özellikle enerji piyasası gibi
+        doğrusal olmayan, rejim değişimlerine açık ve değişkenler arası etkileşimin yüksek olduğu problemlerde etkilidir.
+
+        Bu projede XGBoost, her saat için piyasa koşullarını temsil eden özellikleri okuyarak beklenen PTF değerini üretir.
+        Modelin çıktısı daha sonra piyasa davranışına uygun olması için kural tabanlı bir fiyat sınırlandırma ve
+        keskinleştirme adımından geçirilir.
+        """)
+
+        st.markdown("""<div class="section-header"><span class="text">İleri Tarih Tahmini Nasıl Üretilir?</span><span class="line"></span></div>""", unsafe_allow_html=True)
+
+        st.markdown("""
+        PTF Tahmin ekranında seçilen gün için önce EPİAŞ'ın yayınladığı güncel plan verileri çekilir.
+        Bazı veri setleri hedef gün için henüz yayınlanmamışsa sistem akıllı fallback mekanizmasını kullanır.
+        Bu mekanizma sadece geçen haftayı kopyalamaz; T-7, son günler, aynı hafta günü ve aynı saat ortalamalarını
+        birlikte değerlendirerek eksik girdileri daha dengeli şekilde tahmin eder.
+
+        Bu nedenle tahminler iki tür bilgiye dayanır: o anda gerçekten yayınlanmış piyasa verileri ve henüz
+        yayınlanmamış alanlar için geçmiş davranıştan üretilen destekleyici tahminler.
+        """)
+
+        st.info("Bu uygulama kesin fiyat garantisi üretmez; piyasa kararlarını desteklemek için saatlik beklenti, trend ve risk sinyali sağlar.")
 
     # Footer
     st.markdown("""
