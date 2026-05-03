@@ -361,8 +361,6 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
-    render_model_management(button_key="update_model_main")
-
     df = load_data(file_mtime("model_ready_data.csv"))
     if df is None:
         st.error("Veri seti bulunamadı! Lütfen arkaplanda veri çekme ve işleme adımlarını tamamlayın.")
