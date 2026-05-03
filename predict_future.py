@@ -24,6 +24,64 @@ def file_mtime(filename):
     path = BASE_DIR / filename
     return path.stat().st_mtime if path.exists() else None
 
+def same_local_day(df, date_str):
+    return df[local_date_mask(df.index, date_str)].copy()
+
+def smart_fallback_day(df_past, target_date_str, columns):
+    target_local_index = pd.date_range(
+        target_date_str,
+        periods=24,
+        freq='h',
+        tz=LOCAL_TZ
+    ).tz_convert('UTC')
+    result = pd.DataFrame(index=target_local_index)
+
+    target_dt = pd.Timestamp(target_date_str)
+    t_minus_7_str = (target_dt - pd.Timedelta(days=7)).strftime('%Y-%m-%d')
+    t7 = same_local_day(df_past, t_minus_7_str)
+    if t7.empty:
+        return result
+
+    t7 = t7.reindex(columns=columns).astype(float)
+    t7.index = target_local_index[:len(t7)]
+    result = result.join(t7, how='left').astype(float)
+
+    past = df_past.copy()
+    local_index = past.index.tz_convert(LOCAL_TZ) if past.index.tz is not None else past.index.tz_localize("UTC").tz_convert(LOCAL_TZ)
+    past["_local_hour"] = local_index.hour
+    past["_local_dow"] = local_index.dayofweek
+
+    target_dow = pd.Timestamp(target_date_str).dayofweek
+    recent_3d = past[past.index >= past.index.max() - pd.Timedelta(days=3)]
+    recent_14d = past[past.index >= past.index.max() - pd.Timedelta(days=14)]
+    same_dow_28d = recent_14d[recent_14d["_local_dow"] == target_dow]
+
+    for hour, idx in enumerate(target_local_index):
+        for col in columns:
+            values = []
+
+            if col in result.columns and pd.notna(result.at[idx, col]):
+                values.append((0.40, result.at[idx, col]))
+
+            for frame, weight in [
+                (recent_3d, 0.25),
+                (same_dow_28d, 0.25),
+                (recent_14d, 0.10),
+            ]:
+                if col not in frame.columns or frame.empty:
+                    continue
+                hourly_values = frame.loc[frame["_local_hour"] == hour, col].dropna()
+                if not hourly_values.empty:
+                    values.append((weight, hourly_values.mean()))
+
+            if values:
+                weight_sum = sum(weight for weight, _ in values)
+                result.at[idx, col] = sum(weight * value for weight, value in values) / weight_sum
+
+    result.ffill(inplace=True)
+    result.bfill(inplace=True)
+    return result[columns]
+
 def hourly_weather_fallback(target_date_str):
     idx = pd.date_range(
         target_date_str,
@@ -219,33 +277,39 @@ def predict_future_day(target_date_str):
     target_dt = pd.Timestamp(target_date_str)
     t_minus_7 = target_dt - pd.Timedelta(days=7)
     t_minus_7_str = t_minus_7.strftime('%Y-%m-%d')
-    df_t7 = df_past[local_date_mask(df_past.index, t_minus_7_str)].copy()
+    df_t7 = same_local_day(df_past, t_minus_7_str)
     
     if df_t7.empty:
         return None, False, "T-7 referans verisi bulunamadığı için tahmin yapılamıyor."
         
-    df_t7.index = df_t7.index + pd.Timedelta(days=7)
+    target_index = pd.date_range(
+        target_date_str,
+        periods=24,
+        freq='h',
+        tz=LOCAL_TZ
+    ).tz_convert('UTC')
+    df_t7 = df_t7.reindex(columns=df_past.columns)
+    df_t7.index = target_index[:len(df_t7)]
     df_future = pd.DataFrame(index=df_t7.index)
     
     simulated_parts = []
     
     if not plans['load'].empty:
-        df_future['lep'] = plans['load']['lep']
+        df_future['lep'] = plans['load']['lep'].reindex(df_future.index).ffill().bfill()
     else:
-        df_future['lep'] = df_t7['lep']
-        simulated_parts.append("Yük")
+        load_fallback = smart_fallback_day(df_past, target_date_str, ['lep'])
+        df_future['lep'] = load_fallback['lep'].reindex(df_future.index).ffill().bfill()
+        simulated_parts.append("Yük (akıllı)")
         
     if not plans['kgup'].empty:
-        df_future['planned_total_gen'] = plans['kgup']['planned_total_gen']
-        df_future['ruzgar'] = plans['kgup']['ruzgar']
-        df_future['gunes'] = plans['kgup']['gunes']
-        df_future['planned_gas_gen'] = plans['kgup']['planned_gas_gen']
+        for col in ['planned_total_gen', 'ruzgar', 'gunes', 'planned_gas_gen']:
+            df_future[col] = plans['kgup'][col].reindex(df_future.index).ffill().bfill()
     else:
-        df_future['planned_total_gen'] = df_t7['planned_total_gen']
-        df_future['ruzgar'] = df_t7['ruzgar']
-        df_future['gunes'] = df_t7['gunes']
-        df_future['planned_gas_gen'] = df_t7['planned_gas_gen']
-        simulated_parts.append("KGÜP")
+        kgup_cols = ['planned_total_gen', 'ruzgar', 'gunes', 'planned_gas_gen']
+        kgup_fallback = smart_fallback_day(df_past, target_date_str, kgup_cols)
+        for col in kgup_cols:
+            df_future[col] = kgup_fallback[col].reindex(df_future.index).ffill().bfill()
+        simulated_parts.append("KGÜP (akıllı)")
     
     # Hava durumunu ekle
     df_future['temperature'] = df_weather['temperature']
@@ -255,13 +319,14 @@ def predict_future_day(target_date_str):
     df_future['cloud_cover'] = df_weather['cloud_cover']
         
     if not plans['pio'].empty:
-        df_future['price_independent_sales'] = plans['pio']['price_independent_sales']
+        df_future['price_independent_sales'] = plans['pio']['price_independent_sales'].reindex(df_future.index).ffill().bfill()
     else:
-        df_future['price_independent_sales'] = df_t7['price_independent_sales']
-        simulated_parts.append("Satış")
+        pio_fallback = smart_fallback_day(df_past, target_date_str, ['price_independent_sales'])
+        df_future['price_independent_sales'] = pio_fallback['price_independent_sales'].reindex(df_future.index).ffill().bfill()
+        simulated_parts.append("Satış (akıllı)")
         
     is_simulated = len(simulated_parts) > 0
-    sim_msg = f"Simülasyon (T-7): {', '.join(simulated_parts)}" if is_simulated else "Tüm Veriler Orijinal (EPİAŞ)"
+    sim_msg = f"Simülasyon: {', '.join(simulated_parts)}" if is_simulated else "Tüm Veriler Orijinal (EPİAŞ)"
 
     # 3. Geçmiş ve Geleceği birleştir
     df_combined = pd.concat([df_past, df_future])
