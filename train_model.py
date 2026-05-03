@@ -13,7 +13,8 @@ def train_and_evaluate():
     
     # 2. Özellikleri ve Hedefi Belirle
     target = 'price'
-    features = [col for col in df.columns if col != target]
+    exclude_cols = [target, 'sfk_price', 'pfk_price', 'actual_total_gen', 'gen_deviation']
+    features = [col for col in df.columns if col not in exclude_cols]
     
     print(f"[*] Kullanılacak Özellikler ({len(features)} adet):")
     print(", ".join(features))
