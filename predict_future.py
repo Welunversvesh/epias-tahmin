@@ -99,7 +99,8 @@ def fetch_future_plan(target_date_str):
         if not df_kgup.empty:
             df_kgup['date'] = pd.to_datetime(df_kgup['date'], utc=True)
             df_kgup.set_index('date', inplace=True)
-            plans['kgup'] = df_kgup[['toplam', 'ruzgar', 'gunes']].rename(columns={'toplam': 'planned_total_gen'})
+            df_kgup = df_kgup[~df_kgup.index.duplicated(keep='first')]
+            plans['kgup'] = df_kgup[['toplam', 'ruzgar', 'gunes', 'dogalgaz']].rename(columns={'toplam': 'planned_total_gen', 'dogalgaz': 'planned_gas_gen'})
     except Exception as e:
         print(f"KGUP hatası: {e}")
         
@@ -115,8 +116,33 @@ def fetch_future_plan(target_date_str):
     return plans
 
 def predict_future_day(target_date_str):
+    import requests
     df_past = load_recent_raw_data(days=15)
     plans = fetch_future_plan(target_date_str)
+    
+    # Hava Durumu Tahmini (Target Date için Open-Meteo Forecast)
+    print(f"[*] {target_date_str} için hava durumu tahmini cekiliyor...")
+    try:
+        w_url = "https://api.open-meteo.com/v1/forecast"
+        w_params = {
+            "latitude": 39.93, "longitude": 32.86, # Ankara temsilci
+            "start_date": target_date_str, "end_date": target_date_str,
+            "hourly": "temperature_2m,windspeed_10m,direct_radiation",
+            "timezone": "Europe/Istanbul"
+        }
+        w_res = requests.get(w_url, params=w_params, timeout=10).json()
+        df_weather = pd.DataFrame({
+            "temperature": w_res["hourly"]["temperature_2m"],
+            "wind_speed": w_res["hourly"]["windspeed_10m"],
+            "solar_radiation": w_res["hourly"]["direct_radiation"]
+        })
+        # Saatleri uyduralım
+        df_weather.index = pd.to_datetime(target_date_str) + pd.to_timedelta(range(24), unit='h')
+        df_weather.index = df_weather.index.tz_localize('Europe/Istanbul').tz_convert('UTC')
+    except Exception as e:
+        print(f"[-] Hava durumu tahmini cekilemedi: {e}")
+        df_weather = pd.DataFrame({"temperature": [15]*24, "wind_speed": [10]*24, "solar_radiation": [0]*24}, 
+                                  index=pd.to_datetime(target_date_str) + pd.to_timedelta(range(24), unit='h'))
     
     target_dt = pd.to_datetime(target_date_str).tz_localize('UTC') if len(target_date_str.split('-'))==3 else pd.to_datetime(target_date_str)
     t_minus_7 = target_dt - pd.Timedelta(days=7)
@@ -141,11 +167,18 @@ def predict_future_day(target_date_str):
         df_future['planned_total_gen'] = plans['kgup']['planned_total_gen']
         df_future['ruzgar'] = plans['kgup']['ruzgar']
         df_future['gunes'] = plans['kgup']['gunes']
+        df_future['planned_gas_gen'] = plans['kgup']['planned_gas_gen']
     else:
         df_future['planned_total_gen'] = df_t7['planned_total_gen']
         df_future['ruzgar'] = df_t7['ruzgar']
         df_future['gunes'] = df_t7['gunes']
+        df_future['planned_gas_gen'] = df_t7['planned_gas_gen']
         simulated_parts.append("KGÜP")
+    
+    # Hava durumunu ekle
+    df_future['temperature'] = df_weather['temperature']
+    df_future['wind_speed'] = df_weather['wind_speed']
+    df_future['solar_radiation'] = df_weather['solar_radiation']
         
     if not plans['pio'].empty:
         df_future['price_independent_sales'] = plans['pio']['price_independent_sales']
