@@ -398,7 +398,7 @@ def main():
     render_sidebar_model_management()
 
     # Sekmeler
-    tab1, tab2, tab3 = st.tabs(["📊  Geçmiş Veri Analizi", "PTF Tahmin", "📅  Gelecek Ay Beklentisi"])
+    tab1, tab2, tab3 = st.tabs(["📊  Geçmiş Veri Analizi", "📈  PTF Tahmin", "📅  Gelecek Ay Beklentisi"])
     
     # ═══════════════════════════════════════════
     # SEKME 1: GEÇMİŞ VERİ ANALİZİ
