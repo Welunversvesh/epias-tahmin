@@ -1,19 +1,20 @@
-# Force Redeploy: 2026-05-03 16:55
+# EPİAŞ PTF TAHMİN SİSTEMİ - v2.1 (FIXED)
+# Last Update: 2026-05-03 17:01
 import streamlit as st
-# Bellek Temizleme (Hata Giderme İçin)
-if 'cache_cleared' not in st.session_state:
-    st.cache_data.clear()
-    st.cache_resource.clear()
-    st.session_state['cache_cleared'] = True
-
 import pandas as pd
 import xgboost as xgb
 import pickle
-import plotly.express as px
-import plotly.graph_objects as go
 import os
 import io
+import plotly.graph_objects as go
+import plotly.express as px
+from datetime import datetime, timedelta
+import pytz
 import numpy as np
+
+# Bellek Temizleme
+st.cache_data.clear()
+st.cache_resource.clear()
 
 st.set_page_config(page_title="EPİAŞ PTF Kahini", page_icon="⚡", layout="wide")
 
