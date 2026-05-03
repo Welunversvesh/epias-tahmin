@@ -57,6 +57,17 @@ def load_recent_raw_data(days=15):
     except:
         df_gas = pd.DataFrame()
     
+    # Yan Hizmetler
+    try:
+        df_anc_25 = pd.read_csv('ancillary_2025.csv')
+        df_anc_26 = pd.read_csv('ancillary_2026.csv')
+        df_anc = pd.concat([df_anc_25, df_anc_26], ignore_index=True)
+        df_anc['date'] = pd.to_datetime(df_anc['date'], utc=True)
+        df_anc.set_index('date', inplace=True)
+        df_anc = df_anc[~df_anc.index.duplicated(keep='first')]
+    except:
+        df_anc = pd.DataFrame()
+    
     df = df_ptf.join(df_load, how='outer') \
                .join(df_kgup, how='outer') \
                .join(df_smp, how='outer') \
@@ -65,6 +76,9 @@ def load_recent_raw_data(days=15):
     
     if not df_gas.empty:
         df = df.join(df_gas, how='left')
+
+    if not df_anc.empty:
+        df = df.join(df_anc, how='left')
                
     df.ffill(inplace=True)
     df.bfill(inplace=True)
@@ -216,6 +230,8 @@ def predict_future_day(target_date_str):
     df['price_lag_48'] = df['price'].shift(48)
     df['price_lag_168'] = df['price'].shift(168)
     df['smp_lag_24'] = df['systemMarginalPrice'].shift(24)
+    df['sfk_lag_24'] = df['sfk_price'].shift(24)
+    df['pfk_lag_24'] = df['pfk_price'].shift(24)
     
     df['gen_deviation'] = df['actual_total_gen'] - df['planned_total_gen']
     df['gen_deviation_lag_24'] = df['gen_deviation'].shift(24)
