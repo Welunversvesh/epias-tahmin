@@ -133,6 +133,8 @@ def create_features(df):
     df['smp_lag_24'] = df['systemMarginalPrice'].shift(24)
     df['sfk_lag_24'] = df['sfk_price'].shift(24)
     df['pfk_lag_24'] = df['pfk_price'].shift(24)
+    df['sfk_amount_lag_24'] = df['sfk_amount'].shift(24)
+    df['pfk_amount_lag_24'] = df['pfk_amount'].shift(24)
     
     # 2. Plan vs Gerçekleşme Sapması (Dünden gelen sapma)
     # Gerçekleşen üretim - Planlanan üretim (Ne kadar saptık?)
