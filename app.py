@@ -344,7 +344,8 @@ def main():
             st.markdown("""<div class="section-header"><span class="icon">📋</span><span class="text">Saatlik Detay Tablosu</span><span class="line"></span></div>""", unsafe_allow_html=True)
             
             display_df = filtered_df[['price', 'predicted_price']].copy()
-            display_df.index = display_df.index.strftime('%Y-%m-%d %H:%00')
+            # Düzeltilen format:
+            display_df.index = display_df.index.strftime('%Y-%m-%d %H:00')
             display_df.columns = ['Gerçek PTF', 'Tahmin']
             st.dataframe(display_df.style.format("{:,.2f}"), use_container_width=True)
             
@@ -426,8 +427,8 @@ def main():
                         
                         st.markdown("""<div class="section-header"><span class="icon">📋</span><span class="text">Saatlik Detay</span><span class="line"></span></div>""", unsafe_allow_html=True)
                         res_display = res.copy()
-                        # Tarih ve Saati daha şık göster (Örn: 05 Mayıs 14:00)
-                        res_display.index = res_display.index.strftime('%d %b %H:%00')
+                        # Düzeltilen format (Gelecek tahmini için):
+                        res_display.index = res_display.index.strftime('%Y-%m-%d %H:00')
                         
                         # Sütunları Türkçeleştir ve sırala
                         col_map = {
