@@ -3,6 +3,8 @@ import xgboost as xgb
 from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error
 import numpy as np
 import pickle
+import json
+from datetime import datetime, timezone
 
 def train_and_evaluate():
     print("=== XGBoost PTF Tahmin Modeli Eğitimi ===")
@@ -77,9 +79,27 @@ def train_and_evaluate():
     # Sütun isimlerini de kaydedelim ki predict ederken sıralama bozulmasın
     with open("model_features.pkl", "wb") as f:
         pickle.dump(features, f)
+
+    metrics = {
+        "trained_at": datetime.now(timezone.utc).isoformat(),
+        "rows": int(len(df)),
+        "train_rows": int(len(train_df)),
+        "test_rows": int(len(test_df)),
+        "data_start": df.index.min().isoformat(),
+        "data_end": df.index.max().isoformat(),
+        "test_start": test_df.index.min().isoformat() if not test_df.empty else None,
+        "test_end": test_df.index.max().isoformat() if not test_df.empty else None,
+        "feature_count": len(features),
+        "mae": float(mae),
+        "rmse": float(rmse),
+        "mape": float(mape),
+    }
+    with open("model_metrics.json", "w", encoding="utf-8") as f:
+        json.dump(metrics, f, ensure_ascii=False, indent=2)
         
     print("\n[+] Model 'ptf_xgboost_model.json' olarak başarıyla kaydedildi!")
     print("[+] Kullanılacak özellik listesi 'model_features.pkl' olarak kaydedildi.")
+    print("[+] Eğitim metrikleri 'model_metrics.json' olarak kaydedildi.")
 
 if __name__ == "__main__":
     train_and_evaluate()
