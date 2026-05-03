@@ -288,7 +288,15 @@ def predict_future_day(target_date_str):
     from snapping import apply_price_snapping
     df_target['predicted_price'] = apply_price_snapping(df_target)
     
-    return df_target[['predicted_price', 'lep', 'planned_total_gen', 'planned_gas_gen', 'ruzgar', 'gunes', 'temperature', 'wind_speed', 'precipitation', 'cloud_cover', 'price_independent_sales']], is_simulated, sim_msg
+    cols_to_return = [
+        'predicted_price', 'lep', 'planned_total_gen', 'planned_gas_gen', 
+        'ruzgar', 'gunes', 'temperature', 'wind_speed', 
+        'precipitation', 'cloud_cover', 'price_independent_sales'
+    ]
+    # Sadece var olanlari dondur
+    final_cols = [c for c in cols_to_return if c in df_target.columns]
+    
+    return df_target[final_cols], is_simulated, sim_msg
 
 if __name__ == "__main__":
     # Test
