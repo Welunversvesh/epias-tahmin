@@ -263,9 +263,20 @@ def predict_future_day(target_date_str):
     # 5. Modeli Yükle ve Tahmin Et
     model = xgb.XGBRegressor()
     model.load_model("ptf_xgboost_model.json")
+    # --- KESİN TEMİZLİK (Sinsi sütunları sil) ---
+    for col in ['sfk_amount', 'pfk_amount', 'sfk_amount_lag_24', 'pfk_amount_lag_24']:
+        if col in df_target.columns:
+            df_target.drop(col, axis=1, inplace=True)
+    # --------------------------------------------
+
     with open("model_features.pkl", "rb") as f:
         features = pickle.load(f)
-        
+    
+    # Modelin bekledigi ama veride olmayan bir sey var mi?
+    missing = [c for c in features if c not in df_target.columns]
+    if missing:
+        raise Exception(f"Model {missing} sutunlarini bekliyor ama veride yok!")
+
     X = df_target[features]
     predictions = model.predict(X)
     df_target['predicted_price'] = predictions
