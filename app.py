@@ -398,7 +398,7 @@ def main():
     render_sidebar_model_management()
 
     # Sekmeler
-    tab1, tab2, tab3 = st.tabs(["📊  Geçmiş Veri Analizi", "🔮  Gelecek Tahmini (GÖP)", "📅  Gelecek Ay Beklentisi"])
+    tab1, tab2, tab3 = st.tabs(["📊  Geçmiş Veri Analizi", "PTF Tahmin", "📅  Gelecek Ay Beklentisi"])
     
     # ═══════════════════════════════════════════
     # SEKME 1: GEÇMİŞ VERİ ANALİZİ
@@ -506,10 +506,10 @@ def main():
             st.download_button("📥 Excel İndir", data=buffer.getvalue(), file_name="epias_gecmis_tahminler.xlsx", use_container_width=True)
 
     # ═══════════════════════════════════════════
-    # SEKME 2: GELECEK TAHMİNİ (GÖP)
+    # SEKME 2: PTF TAHMİN
     # ═══════════════════════════════════════════
     with tab2:
-        st.markdown("""<div class="section-header"><span class="icon">🔮</span><span class="text">Gün Öncesi Piyasası (GÖP) Tahmini</span><span class="line"></span></div>""", unsafe_allow_html=True)
+        st.markdown("""<div class="section-header"><span class="text">PTF Tahmin</span><span class="line"></span></div>""", unsafe_allow_html=True)
         st.caption("EPİAŞ'ın yayınladığı plan verilerini kullanarak, PTF'si henüz belli olmayan günlerin saatlik fiyat tahminini üretir.")
         
         col_date, col_btn = st.columns([2, 1])
@@ -565,11 +565,14 @@ def main():
                         
                         # Grafik
                         fig2 = go.Figure()
-                        colors = ['#4ECDC4' if v < avg_price else '#FF6B6B' for v in res['predicted_price']]
-                        fig2.add_trace(go.Bar(
+                        fig2.add_trace(go.Scatter(
                             x=res.index.strftime('%H:00'), y=res['predicted_price'],
-                            marker_color=colors, name='Beklenen PTF',
-                            marker_line_width=0, opacity=0.85
+                            mode='lines+markers',
+                            name='Beklenen PTF',
+                            line=dict(color='#4ECDC4', width=3, shape='spline'),
+                            marker=dict(size=7, color='#4ECDC4', line=dict(width=1, color='rgba(255,255,255,0.35)')),
+                            fill='tozeroy',
+                            fillcolor='rgba(78,205,196,0.08)'
                         ))
                         fig2.add_hline(y=avg_price, line_dash="dash", line_color="#FFD93D",
                                        annotation_text=f"Ort: {avg_price:,.0f} ₺", annotation_font_color="#FFD93D")
