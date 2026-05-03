@@ -241,6 +241,15 @@ def main():
     X = df[features]
     df['predicted_price'] = model.predict(X)
     
+    # --- EKSİK VERİ TAMAMLAMA (Interpolation) ---
+    # Eğer veride saatlik boşluklar varsa (Mayıs-Haziran 2025 gibi), buraları doldurur.
+    df = df.resample('h').mean()
+    df['price'] = df['price'].interpolate(method='linear')
+    df['predicted_price'] = df['predicted_price'].interpolate(method='linear')
+    df.ffill(inplace=True)
+    df.bfill(inplace=True)
+    # --------------------------------------------
+
     import snapping
     import importlib
     importlib.reload(snapping)
